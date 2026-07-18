@@ -25,7 +25,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .brand-toggle{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden}
 .bt-btn{padding:5px 14px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--ink3);transition:all .15s;display:flex;align-items:center;gap:5px}
 .bt-btn img{width:14px;height:14px;border-radius:3px}
-.bt-btn.active{background:var(--ink);color:#fff;font-weight:600}
+.bt-btn.active{background:#385628;color:#fff;font-weight:600}
 .h-meta{font-size:12px;color:var(--ink4)}
 .model-bar{position:sticky;top:54px;z-index:190;background:var(--paper);border-bottom:1px solid var(--border);padding:8px 28px;display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none}
 .model-bar::-webkit-scrollbar{display:none}
@@ -268,39 +268,11 @@ tr.dom-row-open .dom-chev{transform:rotate(180deg)}
 <body>
 <header class="header">
   <div class="h-left">
-    <span class="h-title">AI Visibility Report</span>
+    <img src="https://seniorcomm.com/wp-content/uploads/2024/11/scv.png" alt="SeniorComm" style="height:26px;width:auto">
     <span class="h-sep">|</span>
     <div class="brand-toggle"><button class="bt-btn active" onclick="setBrand('the-village-at-orchard-ridge',this)"><img src="https://www.google.com/s2/favicons?domain=thevillageatorchardridge.org&sz=32" onerror="this.style.display='none'">The Village at Orchard Ridge</button></div>
   </div>
-  <div style="position:relative;display:flex;align-items:center;gap:8px">
-    <div class="time-filter">
-      <button class="tf-btn active" onclick="setTimeRange('all',this)">All data</button>
-      <button class="tf-btn" onclick="setTimeRange('last-20',this)">Last 20 days</button>
-      <button class="tf-btn" onclick="setTimeRange('last-14',this)">Last 14 days</button>
-      <button class="tf-btn" onclick="setTimeRange('last-7',this)">Last 7 days</button>
-      <button class="tf-btn" onclick="setTimeRange('last-run',this)">Last run</button>
-      <button class="tf-btn" id="customTfBtn" onclick="toggleCustomPicker(this)">Custom</button>
-    </div>
-    <div id="customDatePicker" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--paper);border:1.5px solid var(--border2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.13);padding:16px 18px;z-index:500;min-width:280px">
-      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink4);margin-bottom:12px">Custom date range</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:5px">Start date</label>
-          <input type="date" id="customStart" style="width:100%;padding:6px 10px;border:1.5px solid var(--border2);border-radius:7px;font-size:13px;color:var(--ink);background:var(--paper);outline:none;cursor:pointer" onfocus="this.style.borderColor='var(--v)'" onblur="this.style.borderColor='var(--border2)'">
-        </div>
-        <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:5px">End date</label>
-          <input type="date" id="customEnd" style="width:100%;padding:6px 10px;border:1.5px solid var(--border2);border-radius:7px;font-size:13px;color:var(--ink);background:var(--paper);outline:none;cursor:pointer" onfocus="this.style.borderColor='var(--v)'" onblur="this.style.borderColor='var(--border2)'">
-        </div>
-      </div>
-      <div id="customPickerError" style="display:none;font-size:12px;color:var(--bad);margin-bottom:10px"></div>
-      <div style="display:flex;gap:8px">
-        <button onclick="applyCustomRange()" style="flex:1;padding:7px 0;background:var(--ink);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">Apply</button>
-        <button onclick="closeCustomPicker()" style="padding:7px 14px;background:var(--surface);color:var(--ink3);border:1px solid var(--border);border-radius:7px;font-size:13px;cursor:pointer">Cancel</button>
-      </div>
-    </div>
-  </div>
-  <div class="h-meta" id="hMeta">May 2026 &middot; 5 AI models</div>
+  <div class="h-meta">AI Visibility Report</div>
 </header>
 <div class="model-bar">
   <span class="mb-label">Filter by model</span>
