@@ -467,8 +467,11 @@ function setSentFilter(f,btn){sentimentFilter=f;document.querySelectorAll('#sent
 function _daysBack(dateStr,days){var d=new Date(dateStr+'T00:00:00');d.setDate(d.getDate()-days);return d.toISOString().split('T')[0];}
 function _extractDomainJS(url){try{var parsed=new URL(url);var h=parsed.hostname.toLowerCase();return h.startsWith('www.')?h.slice(4):h;}catch(e){return url;}}
 function _normComp(name){var n=name.trim().toLowerCase();n=n.replace(/\.(ai|com|io|co|org|net|app)$/,'');n=n.replace(/\s+ai$/,'');n=n.replace(/ai$/,'');n=n.replace(/\s+(digital|agency|media|platform|labs?|technologies?|solutions?)$/,'');n=n.replace(/,?\s*(senior living communit(?:y|ies)|assisted living (?:communit(?:y|ies)|facilit(?:y|ies))|memory care communit(?:y|ies)|independent living communit(?:y|ies)|retirement (?:communit(?:y|ies)|home|homes)|nursing home|senior living|assisted living|memory care|independent living)\s*$/,'').trim();return n.replace(/[\s\-,]/g,'');}
-function _brandParentToken(name){var m=name.trim().match(/^(.+?)\s+(?:at|of|in)\s+.+$/i);var base=m?m[1]:name;return _normComp(base);}
-function _dedupeComps(comps){var bcfg=BRAND_CFG[currentBrand];var trackedParent=bcfg?_brandParentToken(bcfg.name):null;var groups={};comps.forEach(function(c){if(c.isBrand)return;var norm=_normComp(c.name);var compIsBare=(_brandParentToken(c.name)===norm);if(trackedParent&&compIsBare&&norm===trackedParent)return;if(!groups[norm]){groups[norm]={canonical:c.name,canonicalMentions:c.mentions,mentions:0,avgScore:0,topSentiment:c.topSentiment,models:[],modelMentions:{}};}var g=groups[norm];g.mentions+=c.mentions;if(c.mentions>g.canonicalMentions){g.canonical=c.name;g.canonicalMentions=c.mentions;}(c.models||[]).forEach(function(m){if(g.models.indexOf(m)===-1)g.models.push(m);});if(c.modelMentions){Object.keys(c.modelMentions).forEach(function(mk){g.modelMentions[mk]=(g.modelMentions[mk]||0)+c.modelMentions[mk];});}});return Object.values(groups).map(function(g){return {name:g.canonical,mentions:g.mentions,avgScore:0,topSentiment:g.topSentiment,models:g.models,modelMentions:g.modelMentions};}).sort(function(a,b){return b.mentions-a.mentions;});}
+function _locToken(raw){if(!raw)return '';var s=raw.trim().toLowerCase();s=s.replace(/,?\s*(virginia|va)\.?\s*$/i,'');s=s.replace(/,?\s*(senior living communit(?:y|ies)|assisted living(?: (?:and|&) memory care)?(?:\s*(?:communit(?:y|ies)|facilit(?:y|ies)))?|memory care communit(?:y|ies)|independent living communit(?:y|ies)|retirement (?:communit(?:y|ies)|home|homes)|nursing home|senior living|assisted living|memory care|independent living)\s*$/i,'');s=s.replace(/[^a-z0-9]/g,'');return s;}
+function _brandIdentity(name){var m=name.trim().match(/^(.+?)\s+(?:at|of|in)\s+(.+)$/i);var parent=_normComp(m?m[1]:name);var loc=m?_locToken(m[2]):'';return{parent:parent,loc:loc,isBare:!m};}
+function _prepositionlessKey(name){return _normComp(name.replace(/\b(?:at|of|in)\b/gi,' '));}
+function _isSelfMention(compName,trackedId,trackedFullKey){if(!trackedId)return false;var id=_brandIdentity(compName);if(id.isBare&&id.parent===trackedId.parent)return true;if(!id.isBare&&trackedId.loc&&id.parent===trackedId.parent&&id.loc===trackedId.loc)return true;if(trackedFullKey&&_prepositionlessKey(compName)===trackedFullKey)return true;return false;}
+function _dedupeComps(comps){var bcfg=BRAND_CFG[currentBrand];var trackedId=bcfg?_brandIdentity(bcfg.name):null;var trackedFullKey=bcfg?_prepositionlessKey(bcfg.name):null;var groups={};comps.forEach(function(c){if(c.isBrand)return;if(_isSelfMention(c.name,trackedId,trackedFullKey))return;var id=_brandIdentity(c.name);var norm=_normComp(c.name);var key=id.isBare?norm:(id.parent+'|'+id.loc);if(!groups[key]){groups[key]={canonical:c.name,canonicalMentions:c.mentions,mentions:0,avgScore:0,topSentiment:c.topSentiment,models:[],modelMentions:{}};}var g=groups[key];g.mentions+=c.mentions;if(c.mentions>g.canonicalMentions){g.canonical=c.name;g.canonicalMentions=c.mentions;}(c.models||[]).forEach(function(m){if(g.models.indexOf(m)===-1)g.models.push(m);});if(c.modelMentions){Object.keys(c.modelMentions).forEach(function(mk){g.modelMentions[mk]=(g.modelMentions[mk]||0)+c.modelMentions[mk];});}});return Object.values(groups).map(function(g){return {name:g.canonical,mentions:g.mentions,avgScore:0,topSentiment:g.topSentiment,models:g.models,modelMentions:g.modelMentions};}).sort(function(a,b){return b.mentions-a.mentions;});}
 
 function _computeFilteredData(brandKey){
   var rh=RAW_HISTORY[brandKey];
@@ -882,7 +885,11 @@ function renderOverview(){
   function ovBars(items,maxVal,fillClass){
     return items.map(function(item){
       var pct=maxVal>0?Math.round(item.val/maxVal*100):0;
-      return '<div class="ov-bar-row"><div class="ov-bar-lbl"><img src="'+fav(item.icon)+'" onerror="this.style.opacity=\'0\'" alt=""><span>'+item.label+'</span></div><div class="ov-bar-track"><div class="ov-bar-fill '+fillClass+'" style="width:'+pct+'%"></div></div><div class="ov-bar-val">'+item.sub+'</div></div>';
+      var rowStyle=item.isBrand?' style="background:rgba(79,70,229,.06);border-top:1.5px dashed rgba(79,70,229,.3)"':'';
+      var lblStyle=item.isBrand?' style="color:#4f46e5;font-weight:700"':'';
+      var valStyle=item.isBrand?' style="color:#4f46e5;font-weight:700"':'';
+      var barStyle='width:'+pct+'%'+(item.isBrand?';background:rgba(79,70,229,.85)':'');
+      return '<div class="ov-bar-row"'+rowStyle+'><div class="ov-bar-lbl"'+lblStyle+'><img src="'+fav(item.icon)+'" onerror="this.style.opacity=\'0\'" alt=""><span>'+item.label+'</span></div><div class="ov-bar-track"><div class="ov-bar-fill '+(item.isBrand?'':fillClass)+'" style="'+barStyle+'"></div></div><div class="ov-bar-val"'+valStyle+'>'+item.sub+'</div></div>';
     }).join('');
   }
 
@@ -893,14 +900,15 @@ function renderOverview(){
   var covItemsFiltered=activeModel==='all'?covItems:covItems.filter(function(item){return item.label===(MODEL_META[activeModel]||{label:activeModel}).label;});
 
   /* ── Competitor bar items ───────────────────────────────────────────── */
-  var compMax=top8[0]?(activeModel!=='all'?(top8[0].modelMentions||top8[0].mentions):top8[0].mentions):1;if(compMax===0)compMax=1;
-  var compItems=top8.map(function(c){var cd=COMP_DOMAINS[c.name]||(c.name.toLowerCase().replace(/\s/g,'')+'.com');var mentionVal=activeModel!=='all'?(c.modelMentions||0):c.mentions;return {icon:cd,label:c.name,val:mentionVal,sub:mentionVal+' mentions'};});
+  function _dcOv(c){return activeModel==='all'?c.mentions:(c.modelMentions&&c.modelMentions[activeModel]||0);}
   var brandMentionCount=inRangeDates.reduce(function(s,d){return s+(dayBrandHits[d]||0);},0);
   var _brandDomOv=BRAND_CFG[currentBrand].url||'aipeekaboo.com';
-  var _brandPctOv=compMax>0?Math.round(brandMentionCount/compMax*100):0;
-  var _brandOvRow='<div class="ov-bar-row" style="background:rgba(79,70,229,.06);padding:6px 0;border-top:1.5px dashed rgba(79,70,229,.3);border-bottom:none"><div class="ov-bar-lbl" style="color:#4f46e5;font-weight:700"><img src="'+fav(_brandDomOv)+'" onerror="this.style.opacity=\'0\'" alt=""><span>You ('+brandName+')</span></div><div class="ov-bar-track"><div class="ov-bar-fill" style="width:'+_brandPctOv+'%;background:rgba(79,70,229,.85)"></div></div><div class="ov-bar-val" style="color:#4f46e5;font-weight:700">'+brandMentionCount+' mentions</div></div>';
-
-  /* ── Top domain items ───────────────────────────────────────────────── */
+  var ovBrandEntry={name:'You ('+brandName+')',isBrand:true,mentions:brandMentionCount,modelMentions:null};
+  var ovAllRanked=[ovBrandEntry].concat(compFiltered);
+  ovAllRanked.sort(function(a,b){return _dcOv(b)-_dcOv(a);});
+  var top8Ov=ovAllRanked.slice(0,8);
+  var compMax=top8Ov[0]?_dcOv(top8Ov[0]):1;if(compMax===0)compMax=1;
+  var compItems=top8Ov.map(function(c){var isB=!!c.isBrand;var cd=isB?_brandDomOv:(COMP_DOMAINS[c.name]||(c.name.toLowerCase().replace(/\s/g,'')+'.com'));var mentionVal=_dcOv(c);return {icon:cd,label:c.name,val:mentionVal,sub:mentionVal+' mentions',isBrand:isB};});  /* ── Top domain items ───────────────────────────────────────────────── */
   var topDom=activeCit.topDomains.slice(0,8),domMax=topDom[0]?topDom[0].count:1;
   var domItems=topDom.map(function(d){return {icon:d.domain,label:d.domain,val:d.count,sub:d.count+' citations'};});
 
@@ -909,7 +917,7 @@ function renderOverview(){
   document.getElementById('ovContent').innerHTML=
     '<div class="two-col" style="margin-bottom:14px">'+
       '<div class="cc"><div class="cc-head"><div class="cc-title">Share of Voice</div><div class="cc-sub">top 6 brands by AI mention share</div></div><div class="cc-body" style="height:260px;position:relative"><canvas id="ov-sov"></canvas><div id="ov-sov-labels" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none"></div></div></div>'+
-      '<div class="cc"><div class="cc-head"><div class="cc-title">Competitor Mentions</div><div class="cc-sub">'+(activeModel!=='all'?(MODEL_META[activeModel]||{label:activeModel}).label+' &middot; ':'')+'top 8 by mention count</div></div><div class="cc-body"><div class="ov-bar-wrap">'+ovBars(compItems,compMax,'ov-green')+_brandOvRow+'</div></div></div>'+
+      '<div class="cc"><div class="cc-head"><div class="cc-title">Competitor Mentions</div><div class="cc-sub">'+(activeModel!=='all'?(MODEL_META[activeModel]||{label:activeModel}).label+' &middot; ':'')+'top 8 by mention count</div></div><div class="cc-body"><div class="ov-bar-wrap">'+ovBars(compItems,compMax,'ov-green')+'</div></div></div>'+
     '</div>'+
     '<div class="two-col" style="margin-bottom:14px">'+
       '<div class="cc"><div class="cc-head"><div class="cc-title">Sentiment Breakdown</div><div class="cc-sub">'+sMentions.length+' brand mention'+(sMentions.length!==1?'s':'')+' analysed</div></div><div class="cc-body" style="height:210px;position:relative"><canvas id="ov-sent"></canvas></div></div>'+
@@ -944,26 +952,32 @@ function renderOverview(){
     var meta=chartInst.getDatasetMeta(0);
     var labelsEl=document.getElementById('ov-sov-labels');
     if(!labelsEl||!meta)return;
-    var html='';
+    var pts=[];
     meta.data.forEach(function(arc,i){
       if(!sovData[i])return;
       var item=sovItems[i];
       var angle=(arc.startAngle+arc.endAngle)/2;
-      var radius=arc.outerRadius+16;
+      var radius=arc.outerRadius+24;
       var x=arc.x+Math.cos(angle)*radius;
       var y=arc.y+Math.sin(angle)*radius;
-      var alignRight=Math.cos(angle)<-.15;
-      var alignCenter=!alignRight&&Math.cos(angle)<.15;
+      pts.push({x:x,y:y,item:item,angle:angle});
+    });
+    ['left','right'].forEach(function(side){
+      var grp=pts.filter(function(p){return side==='left'?Math.cos(p.angle)<0:Math.cos(p.angle)>=0;}).sort(function(a,b){return a.y-b.y;});
+      for(var gi=1;gi<grp.length;gi++){var minGap=20;if(grp[gi].y-grp[gi-1].y<minGap){grp[gi].y=grp[gi-1].y+minGap;}}
+    });
+    var html='';
+    pts.forEach(function(p){
+      var alignRight=Math.cos(p.angle)<-.15;
+      var alignCenter=!alignRight&&Math.cos(p.angle)<.15;
       var tx=alignRight?'-100%':(alignCenter?'-50%':'0%');
-      var favImg=item.domain?('<img src="'+fav(item.domain)+'" style="width:13px;height:13px;border-radius:3px;flex-shrink:0" onerror="this.style.display=\'none\'">'):'';
-      html+='<div style="position:absolute;left:'+x+'px;top:'+y+'px;transform:translate('+tx+',-50%);display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--ink2);white-space:nowrap;background:rgba(255,255,255,.85);padding:1px 4px;border-radius:4px">'+favImg+'<span>'+esc(item.name)+'</span></div>';
+      var favImg=p.item.domain?('<img src="'+fav(p.item.domain)+'" style="width:13px;height:13px;border-radius:3px;flex-shrink:0" onerror="this.style.display=\'none\'">'):'';
+      html+='<div style="position:absolute;left:'+p.x+'px;top:'+p.y+'px;transform:translate('+tx+',-50%);display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--ink2);white-space:nowrap;background:rgba(255,255,255,.9);padding:1px 4px;border-radius:4px">'+favImg+'<span>'+esc(p.item.name)+'</span></div>';
     });
     labelsEl.innerHTML=html;
   }
-  _ovCharts.sov=new Chart(document.getElementById('ov-sov'),{type:'pie',data:{labels:sovLabels,datasets:[{data:sovData,backgroundColor:sovColors.slice(0,sovItems.length),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:_donutTooltipCb},animation:{onComplete:function(){_positionSovLabels();}}}});
-  _positionSovLabels();
-
-  /* ── Sentiment donut ────────────────────────────────────────────────── */
+  _ovCharts.sov=new Chart(document.getElementById('ov-sov'),{type:'pie',data:{labels:sovLabels,datasets:[{data:sovData,backgroundColor:sovColors.slice(0,sovItems.length),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,radius:'68%',plugins:{legend:{display:false},tooltip:_donutTooltipCb},animation:{onComplete:function(){_positionSovLabels();}}}});
+  _positionSovLabels();  /* ── Sentiment donut ────────────────────────────────────────────────── */
   _ovCharts.sent=new Chart(document.getElementById('ov-sent'),{type:'doughnut',data:{labels:['Positive','Neutral','Negative','Uncertain'],datasets:[{data:[sentCounts.positive,sentCounts.neutral,sentCounts.negative,sentCounts.uncertain],backgroundColor:['#22c55e','#94a3b8','#ef4444','#f59e0b'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:baseFont,boxWidth:12,padding:10}},tooltip:_donutTooltipCb}}});
 
   /* ── Content type donut ─────────────────────────────────────────────── */
@@ -1101,7 +1115,7 @@ var _promptComps={};
 var _promptCits={};
 function _buildPromptComps(bk){
   var rh=RAW_HISTORY[bk];if(!rh)return;
-  var bpcCfg=BRAND_CFG[bk];var bpcTrackedParent=bpcCfg?_brandParentToken(bpcCfg.name):null;
+  var bpcCfg=BRAND_CFG[bk];var bpcTrackedId=bpcCfg?_brandIdentity(bpcCfg.name):null;var bpcTrackedFullKey=bpcCfg?_prepositionlessKey(bpcCfg.name):null;
   var runDates=rh.runDates||[];
   var maxDate=runDates.length?runDates[runDates.length-1]:null;
   var cutoffDate=null,lastRunOnly=false,customEndPc=null;
@@ -1117,11 +1131,7 @@ function _buildPromptComps(bk){
     var allCounts={};var modelCounts={};
     (rp.entries||[]).filter(function(e){return pcInRange(e.date);}).forEach(function(e){
       var mk=e.model;
-      (e.comps||[]).filter(function(c){
-        if(!bpcTrackedParent)return true;
-        var bpcIsBare=(_brandParentToken(c)===_normComp(c));
-        return !(bpcIsBare&&_normComp(c)===bpcTrackedParent);
-      }).forEach(function(c){
+      (e.comps||[]).filter(function(c){return !_isSelfMention(c,bpcTrackedId,bpcTrackedFullKey);}).forEach(function(c){
         allCounts[c]=(allCounts[c]||0)+1;
         if(!modelCounts[mk])modelCounts[mk]={};
         modelCounts[mk][c]=(modelCounts[mk][c]||0)+1;
@@ -1390,22 +1400,34 @@ function renderCompetitors(){
   var comps=(intentFilter!=='all'||topicFilter!=='all')?_dedupeComps(_buildIntentFilteredComps(bk)):_dedupeComps(D.competitors[bk].slice());
   if(activeModel!=='all')comps=comps.filter(function(c){return c.models&&c.models.indexOf(activeModel)>-1;});
   function _dc(c){return activeModel==='all'?c.mentions:(c.modelMentions&&c.modelMentions[activeModel]||0);}
-  if(activeModel!=='all')comps=comps.slice().sort(function(a,b){return _dc(b)-_dc(a);});
-  var max=comps[0]?_dc(comps[0]):1;if(max===0)max=1;
   var _cpd=_filterPdByIntent(D.prompts[bk]);
   var _brandMentionsComp=activeModel==='all'?_cpd.reduce(function(s,p){return s+(p.mentions||0);},0):_cpd.reduce(function(s,p){return s+((p.models&&p.models[activeModel]&&p.models[activeModel].mentioned)?1:0);},0);
   var _bMentionedPd=_cpd.filter(function(p){return activeModel==='all'?p.mentions>0:(p.models&&p.models[activeModel]&&p.models[activeModel].mentioned);});
   var _brandAvgComp=_bMentionedPd.length?Math.round(_bMentionedPd.reduce(function(s,p){return s+(activeModel==='all'?(p.avgScore||0):((p.models[activeModel]&&p.models[activeModel].score)||0));},0)/_bMentionedPd.length):0;
-  var _brandPctComp=max>0?(_brandMentionsComp/max*100).toFixed(0):0;
   var _brandDomComp=BRAND_CFG[currentBrand].url||'aipeekaboo.com';
   var _brandCompName=BRAND_CFG[currentBrand].name;
-  var _brandCompRow='<div class="comp-row" style="background:rgba(79,70,229,.06);border-bottom:1.5px dashed rgba(79,70,229,.25)"><div class="comp-rank" style="color:#4f46e5;font-size:9px;font-weight:800;letter-spacing:.05em;width:20px">YOU</div><img class="comp-fav" src="'+fav(_brandDomComp)+'" onerror="this.style.display=\'none\'"><div class="comp-name" style="color:#4f46e5;font-weight:700">'+esc(_brandCompName)+'</div><div class="comp-bar-wrap"><div class="comp-bar" style="width:'+_brandPctComp+'%;background:rgba(79,70,229,.85)"></div></div><div class="comp-count" style="color:#4f46e5;font-weight:600">'+_brandMentionsComp+' mentions</div><div class="sdot sdot-pos" title="positive"></div></div>';
-  document.getElementById('compList').innerHTML=_brandCompRow+comps.slice(0,15).map(function(c,i){
-    var cd=COMP_DOMAINS[c.name]||(c.name.toLowerCase().replace(/\s/g,'')+'.com');
+  var _sBrandComp=D.sentiment[bk]||{positive:0,neutral:0,negative:0};
+  var _brandTopSentComp='neutral';
+  if(_sBrandComp.positive>=_sBrandComp.neutral&&_sBrandComp.positive>=_sBrandComp.negative&&_sBrandComp.positive>0)_brandTopSentComp='positive';
+  else if(_sBrandComp.negative>_sBrandComp.neutral&&_sBrandComp.negative>0)_brandTopSentComp='negative';
+  var brandEntry={name:_brandCompName,isBrand:true,mentions:_brandMentionsComp,modelMentions:null,topSentiment:_brandTopSentComp,avgScore:_brandAvgComp,domain:_brandDomComp};
+  var allRanked=[brandEntry].concat(comps);
+  allRanked.sort(function(a,b){return _dc(b)-_dc(a);});
+  var max=allRanked[0]?_dc(allRanked[0]):1;if(max===0)max=1;
+  var compRankN=0;
+  document.getElementById('compList').innerHTML=allRanked.slice(0,16).map(function(c){
+    var cd=c.isBrand?c.domain:(COMP_DOMAINS[c.name]||(c.name.toLowerCase().replace(/\s/g,'')+'.com'));
     var dispVal=_dc(c);
     var pct=(dispVal/max*100).toFixed(0);
     var sdotCls=c.topSentiment==='positive'?'sdot-pos':c.topSentiment==='negative'?'sdot-neg':'sdot-neu';
-    return '<div class="comp-row"><div class="comp-rank">'+(i+1)+'</div><img class="comp-fav" src="'+fav(cd)+'" onerror="this.style.display=\'none\'"><div class="comp-name">'+esc(c.name)+'</div><div class="comp-bar-wrap"><div class="comp-bar" style="width:'+pct+'%"></div></div><div class="comp-count">'+dispVal+' mentions</div><div class="sdot '+sdotCls+'" title="'+c.topSentiment+'"></div></div>';
+    var rankHtml;
+    if(c.isBrand){rankHtml='<div class="comp-rank" style="color:#4f46e5;font-size:9px;font-weight:800;letter-spacing:.05em;width:20px">YOU</div>';}
+    else{compRankN++;rankHtml='<div class="comp-rank">'+compRankN+'</div>';}
+    var rowStyle=c.isBrand?' style="background:rgba(79,70,229,.06);border-bottom:1.5px dashed rgba(79,70,229,.25)"':'';
+    var nameStyle=c.isBrand?' style="color:#4f46e5;font-weight:700"':'';
+    var countStyle=c.isBrand?' style="color:#4f46e5;font-weight:600"':'';
+    var barStyle='width:'+pct+'%'+(c.isBrand?';background:rgba(79,70,229,.85)':'');
+    return '<div class="comp-row"'+rowStyle+'>'+rankHtml+'<img class="comp-fav" src="'+fav(cd)+'" onerror="this.style.display=\'none\'"><div class="comp-name"'+nameStyle+'>'+esc(c.name)+'</div><div class="comp-bar-wrap"><div class="comp-bar" style="'+barStyle+'"></div></div><div class="comp-count"'+countStyle+'>'+dispVal+' mentions</div><div class="sdot '+sdotCls+'" title="'+c.topSentiment+'"></div></div>';
   }).join('')||'<p style="color:var(--ink4);font-size:13px">No competitors for this filter.</p>';
   document.getElementById('compSub').textContent=comps.length+' competitors detected'+(activeModel!=='all'?' for '+(MODEL_META[activeModel]||{label:activeModel}).label:'');
   var top3=comps.slice(0,3);
