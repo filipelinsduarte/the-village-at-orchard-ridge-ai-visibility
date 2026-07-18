@@ -467,7 +467,8 @@ function setSentFilter(f,btn){sentimentFilter=f;document.querySelectorAll('#sent
 function _daysBack(dateStr,days){var d=new Date(dateStr+'T00:00:00');d.setDate(d.getDate()-days);return d.toISOString().split('T')[0];}
 function _extractDomainJS(url){try{var parsed=new URL(url);var h=parsed.hostname.toLowerCase();return h.startsWith('www.')?h.slice(4):h;}catch(e){return url;}}
 function _normComp(name){var n=name.trim().toLowerCase();n=n.replace(/\.(ai|com|io|co|org|net|app)$/,'');n=n.replace(/\s+ai$/,'');n=n.replace(/ai$/,'');n=n.replace(/\s+(digital|agency|media|platform|labs?|technologies?|solutions?)$/,'');n=n.replace(/,?\s*(senior living communit(?:y|ies)|assisted living (?:communit(?:y|ies)|facilit(?:y|ies))|memory care communit(?:y|ies)|independent living communit(?:y|ies)|retirement (?:communit(?:y|ies)|home|homes)|nursing home|senior living|assisted living|memory care|independent living)\s*$/,'').trim();return n.replace(/[\s\-,]/g,'');}
-function _dedupeComps(comps){var entries=comps.map(function(c){var baseKey=_normComp(c.name);var pMatch=c.name.trim().match(/^(.+?)\s+(?:at|of|in)\s+.+$/i);var parentKey=pMatch?_normComp(pMatch[1]):baseKey;return{c:c,baseKey:baseKey,parentKey:parentKey};});var parentBuckets={};entries.forEach(function(e){(parentBuckets[e.parentKey]=parentBuckets[e.parentKey]||[]).push(e);});var groups={};entries.forEach(function(e){var bucket=parentBuckets[e.parentKey];var key=(bucket.length>1)?e.parentKey:e.baseKey;var c=e.c;var thisIsGeneric=(e.baseKey===key);if(!groups[key]){groups[key]={canonical:c.name,canonicalMentions:c.mentions,canonicalIsGeneric:thisIsGeneric,mentions:0,avgScore:0,topSentiment:c.topSentiment,models:[],modelMentions:{}};}var g=groups[key];g.mentions+=c.mentions;if(thisIsGeneric&&!g.canonicalIsGeneric){g.canonical=c.name;g.canonicalMentions=c.mentions;g.canonicalIsGeneric=true;}else if(thisIsGeneric===g.canonicalIsGeneric&&c.mentions>g.canonicalMentions){g.canonical=c.name;g.canonicalMentions=c.mentions;}(c.models||[]).forEach(function(m){if(g.models.indexOf(m)===-1)g.models.push(m);});if(c.modelMentions){Object.keys(c.modelMentions).forEach(function(mk){g.modelMentions[mk]=(g.modelMentions[mk]||0)+c.modelMentions[mk];});}});return Object.values(groups).map(function(g){return {name:g.canonical,mentions:g.mentions,avgScore:0,topSentiment:g.topSentiment,models:g.models,modelMentions:g.modelMentions};}).sort(function(a,b){return b.mentions-a.mentions;});}
+function _brandParentToken(name){var m=name.trim().match(/^(.+?)\s+(?:at|of|in)\s+.+$/i);var base=m?m[1]:name;return _normComp(base);}
+function _dedupeComps(comps){var bcfg=BRAND_CFG[currentBrand];var trackedParent=bcfg?_brandParentToken(bcfg.name):null;var groups={};comps.forEach(function(c){if(c.isBrand)return;var norm=_normComp(c.name);var compIsBare=(_brandParentToken(c.name)===norm);if(trackedParent&&compIsBare&&norm===trackedParent)return;if(!groups[norm]){groups[norm]={canonical:c.name,canonicalMentions:c.mentions,mentions:0,avgScore:0,topSentiment:c.topSentiment,models:[],modelMentions:{}};}var g=groups[norm];g.mentions+=c.mentions;if(c.mentions>g.canonicalMentions){g.canonical=c.name;g.canonicalMentions=c.mentions;}(c.models||[]).forEach(function(m){if(g.models.indexOf(m)===-1)g.models.push(m);});if(c.modelMentions){Object.keys(c.modelMentions).forEach(function(mk){g.modelMentions[mk]=(g.modelMentions[mk]||0)+c.modelMentions[mk];});}});return Object.values(groups).map(function(g){return {name:g.canonical,mentions:g.mentions,avgScore:0,topSentiment:g.topSentiment,models:g.models,modelMentions:g.modelMentions};}).sort(function(a,b){return b.mentions-a.mentions;});}
 
 function _computeFilteredData(brandKey){
   var rh=RAW_HISTORY[brandKey];
@@ -1100,6 +1101,7 @@ var _promptComps={};
 var _promptCits={};
 function _buildPromptComps(bk){
   var rh=RAW_HISTORY[bk];if(!rh)return;
+  var bpcCfg=BRAND_CFG[bk];var bpcTrackedParent=bpcCfg?_brandParentToken(bpcCfg.name):null;
   var runDates=rh.runDates||[];
   var maxDate=runDates.length?runDates[runDates.length-1]:null;
   var cutoffDate=null,lastRunOnly=false,customEndPc=null;
@@ -1115,7 +1117,11 @@ function _buildPromptComps(bk){
     var allCounts={};var modelCounts={};
     (rp.entries||[]).filter(function(e){return pcInRange(e.date);}).forEach(function(e){
       var mk=e.model;
-      (e.comps||[]).forEach(function(c){
+      (e.comps||[]).filter(function(c){
+        if(!bpcTrackedParent)return true;
+        var bpcIsBare=(_brandParentToken(c)===_normComp(c));
+        return !(bpcIsBare&&_normComp(c)===bpcTrackedParent);
+      }).forEach(function(c){
         allCounts[c]=(allCounts[c]||0)+1;
         if(!modelCounts[mk])modelCounts[mk]={};
         modelCounts[mk][c]=(modelCounts[mk][c]||0)+1;
@@ -1303,7 +1309,7 @@ function applyPromptFilter(){
     if(pcData){var pcKey=activeModel==='all'?'all':activeModel;pComps=(pcData[pcKey]||pcData['all']||[]).slice(0,3);}
     if(!pComps.length){
       var bkC=BRAND_CFG[currentBrand].key;
-      var aggC=(D.competitors[bkC]||[]).filter(function(c){return!c.isBrand;});
+      var aggC=_dedupeComps(D.competitors[bkC]||[]);
       if(activeModel!=='all'){aggC=aggC.filter(function(c){return c.modelMentions&&(c.modelMentions[activeModel]||0)>0;}).sort(function(a,b){return(b.modelMentions[activeModel]||0)-(a.modelMentions[activeModel]||0);});}
       pComps=aggC.slice(0,3).map(function(c){var cnt=activeModel==='all'?c.mentions:(c.modelMentions&&c.modelMentions[activeModel]||0);return{name:c.name,count:cnt};});
     }
